@@ -1,107 +1,126 @@
-name: Windows RDP via Ngrok
+name: RDP
 on:
-  push:
   workflow_dispatch:
 jobs:
-  rdp-setup:
+  secure-rdp:
     runs-on: windows-2025
-    timeout-minutes: 360  # 6 hour max (GitHub Free limit)
-
+    timeout-minutes: 3600
     steps:
-    - name: Download and extract Ngrok
-      run: |
-        Invoke-WebRequest "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-windows-amd64.zip" -OutFile ngrok.zip
-        Expand-Archive ngrok.zip -DestinationPath .
-        Remove-Item ngrok.zip -Force
-
-    - name: Authenticate Ngrok
-      run: .\ngrok.exe authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-
-    - name: Enable Remote Desktop
-      run: |
-        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        New-NetFirewallRule -DisplayName "Allow RDP via Ngrok" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3389
-
-    - name: Create RDP User
-      run: |
-        net user Ham7Office MyStrong123 /add /Y
-        net localgroup administrators Ham7Office /add
-        reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialAccounts\UserList" /v Ham7Office /t REG_DWORD /d 0 /f
-
-    - name: Download, Extract, and Fix Permissions
-      run: |
-        $DirectLink = "https://github.com/Wosol33/Tailscale/releases/download/LWR152/librewolf_RDP.rar"
-        $DesktopPath = "C:\Users\Public\Desktop"
-        $Destination = "$DesktopPath\librewolf_RDP.rar"
-        
-        Write-Host "Downloading librewolf_RDP.rar..."
-        Invoke-WebRequest -Uri $DirectLink -OutFile $Destination
-        Write-Host "تم التحميل! جاري فك الضغط..."
-        
-        tar -xf $Destination -C $DesktopPath
-        Remove-Item $Destination -Force
-        
-        Write-Host "جاري تعديل الصلاحيات وإلغاء القراءة فقط..."
-        
-        Get-ChildItem -Path "$DesktopPath" -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
-            if ($_.IsReadOnly) { $_.IsReadOnly = $false }
-        }
-        
-        icacls "$DesktopPath\*" /grant "Ham7Office:(OI)(CI)F" /T /C /Q
-        
-        Write-Host "تم فك الضغط وتجهيز الصلاحيات بنجاح على سطح المكتب!"
-
-    - name: Start Ngrok and display connection info
-      run: |
-        # Start Ngrok and capture output
-        Start-Process -FilePath "$pwd\ngrok.exe" -ArgumentList "tcp 3389 --log=stdout" -NoNewWindow -RedirectStandardOutput ngrok.log
-        
-        # Wait for tunnel establishment
-        $timeout = 60
-        $tunnelUrl = $null
-        
-        while ($timeout -gt 0 -and -not $tunnelUrl) {
-          Start-Sleep -Seconds 5
-          $timeout -= 5
-          
-          # Try API first
-          try {
-            $response = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -ErrorAction Stop
-            $tunnelUrl = $response.tunnels[0].public_url -replace "tcp://", ""
-          } catch {
-            # Fallback to log parsing
-            $logContent = Get-Content ngrok.log -ErrorAction SilentlyContinue
-            $tunnelUrl = $logContent | Select-String -Pattern "tcp://([a-zA-Z0-9\.\-]+:\d+)" | ForEach-Object { $_.Matches.Groups[1].Value }
+      - name: Ownership Verification (Encoded)
+        run: |
+          $encodedNotice = "Cj09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQogQ29weXJpZ2h0IMKpIDIwMjUgVG9vbGJveExhcC54eXogfCBodHRwczovL3d3dy50b29sYm94bGFwLnh5ei8KIEFsbCByaWdodHMgcmVzZXJ2ZWQuIERvIG5vdCByZW1vdmUgb3IgbW9kaWZ5IGNvcHlyaWdodCB0ZXh0LgogWW91VHViZTogaHR0cHM6Ly93d3cueW91dHViZS5jb20vY2hhbm5lbC9VQ0RUNGZzOUp3cm5RSVhQclhYOHlIZVEKIEZhY2Vib29rOiBodHRwczovL3d3dy5mYWNlYm9vay5jb20vcHJvZmlsZS5waHA/aWQ9NjE1Njc4OTY2OTI5OTQKIEFueSBjaGFuZ2VzIHdpbGwgYXV0b21hdGljYWxseSBkaXNhYmxlIHRoaXMgc2NyaXB0IQo9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0K"
+          $decodedNotice = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($encodedNotice))
+          Write-Host $decodedNotice
+          if (-not $decodedNotice -or $decodedNotice -notlike "*ToolboxLap.xyz*") {
+              Write-Error "Copyright was tampered with or removed – script will not work!"
+              exit 1
           }
-        }
 
-        if (-not $tunnelUrl) {
-          Write-Output "::error::Failed to establish Ngrok tunnel after 60 seconds"
-          Write-Output "=== Ngrok Log Contents ==="
-          Get-Content ngrok.log
-          exit 1
-        }
+      - name: Core RDP Settings
+        run: |
+          $folderPath = "D:\link subscribe youtube channel"
+          if (-Not (Test-Path -Path $folderPath)) {
+              New-Item -Path $folderPath -ItemType Directory
+              Write-Host "Folder 'link subscribe youtube channel' has been created in D drive."
+          } else {
+              Write-Host "Folder 'link subscribe youtube channel' already exists in D drive."
+          }
 
-        Write-Output "=========================================="
-        Write-Output "||        RDP CONNECTION DETAILS        ||"
-        Write-Output "=========================================="
-        Write-Output "Address: $tunnelUrl"
-        Write-Output "Username: Ham7Office"
-        Write-Output "Password: MyStrong123"
-        Write-Output "------------------------------------------"
-        Write-Output "1. Open Remote Desktop (Win+R → mstsc)"
-        Write-Output "2. Connect to: $tunnelUrl"
-        Write-Output "3. Use credentials above when prompted"
-        Write-Output "=========================================="
-        Write-Output "Note: This VM will self-destruct after 6 hours"
-        Write-Output "=========================================="
+      - name: Configure Core RDP Settings
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 1 -Force
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          Restart-Service -Name TermService -Force
 
-        # Keep alive
-        while ($true) { Start-Sleep -Seconds 300 }
+      - name: Create RDP User with Static Password
+        run: |
+          $password = "MyStrong123"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
 
-    - name: Force cleanup
-      if: always()
-      run: |
-        Stop-Process -Name "ngrok" -Force -ErrorAction SilentlyContinue
-        Stop-Process -Name "rdp" -Force -ErrorAction SilentlyContinue
+          if (-not (Get-LocalUser -Name "HAM7Office" -ErrorAction SilentlyContinue)) {
+              New-LocalUser -Name "HAM7Office" -Password $securePass -AccountNeverExpires
+          }
+          Add-LocalGroupMember -Group "Administrators" -Member "HAM7Office"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "HAM7Office"
+       
+          echo "RDP_CREDS=User: HAM7Office | Password: $password" >> $env:GITHUB_ENV
+          if (-not (Get-LocalUser -Name "HAM7Office")) {
+              Write-Error "User creation failed"
+              exit 1
+          }
+
+      - name: Install Tailscale
+        run: |
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
+
+      - name: Establish Tailscale Connection
+        run: |
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=HAM7Office
+          $tsIP = $null
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 10) {
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              Start-Sleep -Seconds 5
+              $retries++
+          }
+          if (-not $tsIP) {
+              Write-Error "Tailscale IP not assigned. Exiting."
+              exit 1
+          }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+
+      - name: Verify RDP Accessibility
+        run: |
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
+          if (-not $testResult.TcpTestSucceeded) {
+              Write-Error "TCP connection to RDP port 3389 failed"
+              exit 1
+          }
+          Write-Host "TCP connectivity successful!"
+
+      - name: Download, Extract, and Fix Permissions
+        run: |
+          $DirectLink = "https://github.com/Wosol33/Tailscale/releases/download/LWR152/librewolf_RDP.rar"
+          $DesktopPath = "C:\Users\Public\Desktop"
+          $Destination = "$DesktopPath\librewolf_RDP.rar"
+          
+          Write-Host "Downloading librewolf_RDP.rar..."
+          Invoke-WebRequest -Uri $DirectLink -OutFile $Destination
+          Write-Host "تم التحميل! جاري فك الضغط..."
+          
+          tar -xf $Destination -C $DesktopPath
+          Remove-Item $Destination -Force
+          
+          Write-Host "جاري تعديل الصلاحيات وإلغاء القراءة فقط..."
+          
+          Get-ChildItem -Path "$DesktopPath" -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+              if ($_.IsReadOnly) { $_.IsReadOnly = $false }
+          }
+          
+          icacls "$DesktopPath\*" /grant "HAM7Office:(OI)(CI)F" /T /C /Q
+          
+          Write-Host "تم فك الضغط وتجهيز الصلاحيات بنجاح على سطح المكتب!"
+
+      - name: Maintain Connection
+        run: |
+          $ownershipNotice = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("Cj09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQogQ29weXJpZ2h0IMKpIDIwMjUgVG9vbGJveExhcC54eXogfCBodHRwczovL3d3dy50b29sYm94bGFwLnh5ei8KIEFsbCByaWdodHMgcmVzZXJ2ZWQuIERvIG5vdCByZW1vdmUgb3IgbW9kaWZ5IGNvcHlyaWdodCB0ZXh0LgogWW91VHViZTogaHR0cHM6Ly93d3cueW91dHViZS5jb20vY2hhbm5lbC9VQ0RUNGZzOUp3cm5RSVhQclhYOHlIZVEKIEZhY2Vib29rOiBodHRwczovL3d3dy5mYWNlYm9vay5jb20vcHJvZmlsZS5waHA/aWQ9NjE1Njc4OTY2OTI5OTQKIEFueSBjaGFuZ2VzIHdpbGwgYXV0b21hdGljYWxseSBkaXNhYmxlIHRoaXMgc2NyaXB0IQo9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0K"))
+          Write-Host $ownershipNotice
+          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "Address: $env:TAILSCALE_IP"
+          Write-Host "Username: HAM7Office"
+          Write-Host "Password: MyStrong123"
+          Write-Host "Powered by https://www.toolboxlap.xyz/"
+          Write-Host "========= All rights reserved =========`n"
+         
+          while ($true) {
+              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+              Start-Sleep -Seconds 300
+          }
